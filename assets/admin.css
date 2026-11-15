@@ -1,0 +1,286 @@
+/*
+ * WPEssential Server admin: the same look as the WPEssential plugin (its design tokens, top bar,
+ * cards, buttons, tables and fields), applied to the plugin's own screens only (.wpes-ui-screen).
+ */
+.wpes-ui-screen {
+	--wpe-ink: #0b1a3d;
+	--wpe-text: #0b1a3d;
+	--wpe-text-2: #33405c;
+	--wpe-muted: #5d6780;
+	--wpe-line: #dde4f0;
+	--wpe-surface: #f3f6fc;
+	--wpe-surface-2: #e8eef8;
+	--wpe-card: #fff;
+	--wpe-orange: #ec7d1a;
+	--wpe-indigo: #1f48a6;
+	--wpe-indigo-tint: #e9eef9;
+	--wpe-success: #17704a;
+	--wpe-success-tint: #e3f4ec;
+	--wpe-warning: #8a5300;
+	--wpe-warning-tint: #fbf0dc;
+	--wpe-danger: #c0362c;
+	--wpe-danger-tint: #fbe9e7;
+	--wpe-radius-sm: 6px;
+	--wpe-radius: 10px;
+	--wpe-radius-lg: 14px;
+	--wpe-shadow: 0 1px 2px rgb(11 26 61 / 12%);
+	--wpe-font-heading: "Bricolage Grotesque", "Plus Jakarta Sans", -apple-system, blinkmacsystemfont, "Segoe UI", sans-serif;
+	--wpe-font-body: "Plus Jakarta Sans", -apple-system, blinkmacsystemfont, "Segoe UI", roboto, sans-serif;
+	--wpe-font-mono: "JetBrains Mono", ui-monospace, sfmono-regular, menlo, consolas, monospace;
+	background: var(--wpe-surface);
+}
+
+.wpes-ui-screen #wpbody-content {
+	padding-right: 20px;
+	color: var(--wpe-text);
+	font-family: var(--wpe-font-body);
+}
+
+/* Top bar. */
+.wpes-topbar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 12px 24px;
+	margin: 20px 0 8px;
+	padding: 12px 20px;
+	border: 1px solid var(--wpe-line);
+	border-radius: var(--wpe-radius-lg);
+	background: var(--wpe-card);
+	box-shadow: var(--wpe-shadow);
+}
+
+.wpes-logo {
+	display: inline-flex;
+	align-items: center;
+	gap: 10px;
+	color: var(--wpe-text);
+	font-family: var(--wpe-font-heading);
+	font-size: 15px;
+	text-decoration: none;
+}
+
+.wpes-logo:hover,
+.wpes-logo:focus { color: var(--wpe-text); }
+
+.wpes-logo__mark {
+	display: grid;
+	place-items: center;
+	width: 32px;
+	height: 32px;
+	border-radius: 9px;
+	background: linear-gradient(135deg, var(--wpe-indigo), var(--wpe-orange));
+	color: #fff;
+	font-weight: 800;
+}
+
+.wpes-logo b { color: var(--wpe-orange); }
+
+.wpes-nav {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+}
+
+.wpes-nav__item {
+	padding: 7px 12px;
+	border: 1px solid transparent;
+	border-radius: 999px;
+	color: var(--wpe-text-2);
+	font-weight: 600;
+	text-decoration: none;
+}
+
+.wpes-nav__item:hover { background: var(--wpe-surface); color: var(--wpe-text); }
+
+.wpes-nav__item.is-current {
+	border-color: var(--wpe-indigo);
+	background: var(--wpe-indigo-tint);
+	color: var(--wpe-indigo);
+}
+
+/* Page. */
+.wpes-ui-screen .wrap { margin: 16px 0 40px; }
+
+.wpes-ui-screen .wrap > h1,
+.wpes-ui-screen .wrap h1.wp-heading-inline {
+	margin: 8px 12px 12px 0;
+	padding: 0;
+	color: var(--wpe-ink);
+	font-family: var(--wpe-font-heading);
+	font-size: 28px;
+	font-weight: 700;
+	line-height: 1.2;
+}
+
+.wpes-ui-screen .wrap h2 {
+	color: var(--wpe-ink);
+	font-family: var(--wpe-font-heading);
+	font-size: 18px;
+}
+
+.wpes-ui-screen .wrap > p,
+.wpes-ui-screen .description { color: var(--wpe-muted); }
+
+/* Buttons. */
+.wpes-ui-screen .wrap .button,
+.wpes-ui-screen .wrap .page-title-action {
+	min-height: 36px;
+	padding: 0 14px;
+	border: 1px solid var(--wpe-line);
+	border-radius: var(--wpe-radius-sm);
+	background: var(--wpe-card);
+	box-shadow: none;
+	color: var(--wpe-text);
+	font-weight: 600;
+	line-height: 34px;
+	top: 0;
+}
+
+.wpes-ui-screen .wrap .button:hover,
+.wpes-ui-screen .wrap .page-title-action:hover {
+	border-color: var(--wpe-indigo);
+	background: var(--wpe-indigo-tint);
+	color: var(--wpe-indigo);
+}
+
+.wpes-ui-screen .wrap .button-primary {
+	border-color: var(--wpe-orange);
+	background: var(--wpe-orange);
+	color: #fff;
+}
+
+.wpes-ui-screen .wrap .button-primary:hover,
+.wpes-ui-screen .wrap .button-primary:focus {
+	border-color: #b85d0b;
+	background: #b85d0b;
+	color: #fff;
+}
+
+/* Cards: tables and forms sit on white panels. */
+.wpes-ui-screen .wrap .widefat,
+.wpes-ui-screen .wrap .form-table {
+	overflow: hidden;
+	border: 1px solid var(--wpe-line);
+	border-collapse: separate;
+	border-spacing: 0;
+	border-radius: var(--wpe-radius);
+	background: var(--wpe-card);
+	box-shadow: var(--wpe-shadow);
+}
+
+.wpes-ui-screen .wrap .widefat thead th,
+.wpes-ui-screen .wrap .widefat thead td {
+	padding: 12px 14px;
+	border-bottom: 1px solid var(--wpe-line);
+	background: var(--wpe-surface);
+	color: var(--wpe-muted);
+	font-size: 12px;
+	font-weight: 600;
+	letter-spacing: .04em;
+	text-transform: uppercase;
+}
+
+.wpes-ui-screen .wrap .widefat td { padding: 12px 14px; vertical-align: middle; }
+.wpes-ui-screen .wrap .widefat.striped > tbody > :nth-child(odd) { background: #fafbfe; }
+.wpes-ui-screen .wrap .widefat tbody tr:hover { background: var(--wpe-indigo-tint); }
+.wpes-ui-screen .wrap .widefat code { padding: 2px 6px; border-radius: 4px; background: var(--wpe-surface-2); font-family: var(--wpe-font-mono); font-size: 12px; }
+
+.wpes-ui-screen .wrap .form-table { margin-top: 12px; }
+.wpes-ui-screen .wrap .form-table th { width: 240px; padding: 18px 20px; color: var(--wpe-ink); font-weight: 600; }
+.wpes-ui-screen .wrap .form-table td { padding: 16px 20px; }
+.wpes-ui-screen .wrap .form-table tr + tr > * { border-top: 1px solid var(--wpe-line); }
+.wpes-ui-screen .wrap .form-table th[colspan] { background: var(--wpe-surface); }
+.wpes-ui-screen .wrap .form-table th[colspan] h2 { margin: 0 0 4px; }
+
+/* Fields. */
+.wpes-ui-screen .wrap input[type="text"],
+.wpes-ui-screen .wrap input[type="number"],
+.wpes-ui-screen .wrap input[type="search"],
+.wpes-ui-screen .wrap input[type="email"],
+.wpes-ui-screen .wrap input[type="password"],
+.wpes-ui-screen .wrap input[type="date"],
+.wpes-ui-screen .wrap select,
+.wpes-ui-screen .wrap textarea {
+	min-height: 36px;
+	border: 1px solid var(--wpe-line);
+	border-radius: var(--wpe-radius-sm);
+	background: var(--wpe-card);
+	color: var(--wpe-text);
+}
+
+.wpes-ui-screen .wrap input:focus,
+.wpes-ui-screen .wrap select:focus,
+.wpes-ui-screen .wrap textarea:focus {
+	border-color: var(--wpe-indigo);
+	box-shadow: 0 0 0 3px var(--wpe-indigo-tint);
+	outline: none;
+}
+
+.wpes-ui-screen .wrap .search-box {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	align-items: center;
+	float: none;
+	margin: 12px 0 16px;
+	padding: 12px;
+	border: 1px solid var(--wpe-line);
+	border-radius: var(--wpe-radius);
+	background: var(--wpe-card);
+}
+
+/* Notices. */
+.wpes-ui-screen .notice {
+	border: 1px solid var(--wpe-line);
+	border-left-width: 4px;
+	border-radius: var(--wpe-radius-sm);
+	box-shadow: none;
+}
+
+.wpes-ui-screen .notice-success { border-left-color: var(--wpe-success); background: var(--wpe-success-tint); }
+.wpes-ui-screen .notice-warning { border-left-color: var(--wpe-warning); background: var(--wpe-warning-tint); }
+.wpes-ui-screen .notice-error { border-left-color: var(--wpe-danger); background: var(--wpe-danger-tint); }
+
+/* Pagination. */
+.wpes-ui-screen .wrap .page-numbers {
+	display: inline-block;
+	min-width: 32px;
+	margin-right: 4px;
+	padding: 6px 10px;
+	border: 1px solid var(--wpe-line);
+	border-radius: var(--wpe-radius-sm);
+	background: var(--wpe-card);
+	text-align: center;
+	text-decoration: none;
+}
+
+.wpes-ui-screen .wrap .page-numbers.current { border-color: var(--wpe-indigo); background: var(--wpe-indigo-tint); color: var(--wpe-indigo); }
+
+/* No focus ring after a mouse click; keyboard focus keeps it. */
+.wpes-ui-screen :is(a, button, .button, summary):focus:not(:focus-visible) { outline: none; box-shadow: none; }
+
+/* Spinner on a button whose form is submitting, or a link that is loading. */
+.wpes-ui-screen .is-loading { position: relative; color: transparent !important; pointer-events: none; }
+.wpes-ui-screen .is-loading::after {
+	content: "";
+	position: absolute;
+	inset: 50% auto auto 50%;
+	width: 14px;
+	height: 14px;
+	margin: -7px 0 0 -7px;
+	border: 2px solid var(--wpe-muted);
+	border-left-color: transparent;
+	border-radius: 50%;
+	animation: wpes-spin .7s linear infinite;
+}
+
+.wpes-ui-screen .button-primary.is-loading::after { border-color: #fff #fff #fff transparent; }
+
+@keyframes wpes-spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) { .wpes-ui-screen .is-loading::after { animation-duration: 2.4s; } }
+
+@media (max-width: 782px) {
+	.wpes-ui-screen .wrap .form-table th { width: auto; padding-bottom: 0; }
+}
