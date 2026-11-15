@@ -40,13 +40,22 @@ jobs:
           echo "version=${version:-dev}" >> "$GITHUB_OUTPUT"
           sha256sum artifacts/wpessential-server.zip | tee artifacts/wpessential-server.zip.sha256
 
+      # The artifact holds the wpessential-server/ folder itself (no zip inside a zip): unzip the download
+      # and copy the folder to wp-content, or zip that folder to upload it in WordPress.
+      - name: Unpack into the artifact folder
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf artifact-root && mkdir artifact-root
+          unzip -q artifacts/wpessential-server.zip -d artifact-root
+          test -d artifact-root/wpessential-server
+          test "$(ls -A artifact-root)" = "wpessential-server"
+
       - name: Upload artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: wpessential-server-${{ steps.build.outputs.version }}-${{ github.run_number }}
-          path: |
-            artifacts/wpessential-server.zip
-            artifacts/wpessential-server.zip.sha256
+          path: artifact-root/
           if-no-files-found: error
           retention-days: 30
 
