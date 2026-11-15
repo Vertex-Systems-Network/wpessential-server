@@ -2,6 +2,13 @@
 
 Runs on the seller site (wpessential.org) with WooCommerce. It is the online demo library, license server and subscription system for every site that uses the WPEssential theme. It is **not** shipped inside the theme.
 
+## Repository and builds
+
+This repository holds only the server plugin (moved here, with its history, from the WPEssential Free repository). Free and Pro never contain server code.
+
+- **Build a ZIP:** Actions → **Build ZIP** → *Run workflow*. The installable `wpessential-server.zip` (and its SHA-256) is attached to the run. Pushing a tag such as `v1.0.1` also builds it and attaches it to a GitHub release.
+- **Locally:** `composer update`, then `composer test` (unit tests), `composer lint` (coding standards) and `composer zip` (writes `artifacts/wpessential-server.zip`; the same source always gives a byte-identical ZIP).
+
 ## What it does
 
 | Area | Details |
