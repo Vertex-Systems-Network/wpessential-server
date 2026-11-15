@@ -25,6 +25,75 @@ class Admin {
 		add_action( 'admin_post_wpes_release', array( __CLASS__, 'save_release' ) );
 		add_action( 'admin_post_wpes_license_add', array( __CLASS__, 'add_license' ) );
 		add_action( 'admin_post_wpes_release_pull', array( __CLASS__, 'pull_release' ) );
+		add_action( 'admin_enqueue_scripts', array( __CLASS__, 'assets' ) );
+		add_filter( 'admin_body_class', array( __CLASS__, 'body_class' ) );
+		add_action( 'all_admin_notices', array( __CLASS__, 'topbar' ), 0 );
+	}
+
+	/**
+	 * Screens of this plugin, in top-bar order: page slug => label.
+	 *
+	 * @return array
+	 */
+	private static function screens() {
+		$screens = array(
+			'wpes-server'      => __( 'Licenses', 'wpessential-server' ),
+			'wpes-license-new' => __( 'Add license', 'wpessential-server' ),
+			'wpes-events'      => __( 'Events', 'wpessential-server' ),
+		);
+		if ( current_user_can( 'manage_options' ) ) {
+			$screens['wpes-release']  = __( 'Upload release', 'wpessential-server' );
+			$screens['wpes-settings'] = __( 'Settings', 'wpessential-server' );
+		}
+		return $screens;
+	}
+
+	/**
+	 * The current screen's slug when it is one of ours, else ''.
+	 *
+	 * @return string
+	 */
+	private static function current() {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only screen check.
+		$page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
+		return isset( self::screens()[ $page ] ) ? $page : '';
+	}
+
+	/**
+	 * The WPEssential admin look (the same tokens and components as the WPEssential plugin).
+	 */
+	public static function assets() {
+		if ( '' === self::current() ) {
+			return;
+		}
+		wp_enqueue_style( 'wpes-admin', plugins_url( 'assets/admin.css', WPES_SERVER_FILE ), array(), WPES_SERVER_VERSION );
+		wp_enqueue_script( 'wpes-admin', plugins_url( 'assets/admin.js', WPES_SERVER_FILE ), array(), WPES_SERVER_VERSION, true );
+	}
+
+	/**
+	 * Body class that scopes the styles.
+	 *
+	 * @param string $classes Classes.
+	 * @return string
+	 */
+	public static function body_class( $classes ) {
+		return '' === self::current() ? $classes : $classes . ' wpes-ui-screen';
+	}
+
+	/**
+	 * Top bar with the logo and the screens, like the WPEssential plugin's.
+	 */
+	public static function topbar() {
+		$current = self::current();
+		if ( '' === $current ) {
+			return;
+		}
+		echo '<header class="wpes-topbar"><a class="wpes-logo" href="' . esc_url( admin_url( 'admin.php?page=wpes-server' ) ) . '"><span class="wpes-logo__mark" aria-hidden="true">W</span><span class="wpes-logo__text">WPEssential <b>Server</b></span></a><nav class="wpes-nav" aria-label="' . esc_attr__( 'WPEssential Server', 'wpessential-server' ) . '">';
+		foreach ( self::screens() as $slug => $label ) {
+			$on = $slug === $current;
+			echo '<a class="wpes-nav__item' . ( $on ? ' is-current' : '' ) . '" href="' . esc_url( admin_url( 'admin.php?page=' . $slug ) ) . '"' . ( $on ? ' aria-current="page"' : '' ) . '>' . esc_html( $label ) . '</a>';
+		}
+		echo '</nav></header>';
 	}
 
 	/**
