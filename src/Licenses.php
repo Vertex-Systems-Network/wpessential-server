@@ -93,9 +93,10 @@ class Licenses {
 			$key = self::generate_key();
 		} while ( self::by_key( $key ) );
 		$now = current_time( 'mysql', true );
+		// Caller fields win (array union keeps the left keys): a trial passes its own expires_at.
 		$wpdb->insert( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Custom table.
 			$table,
-			array(
+			$fields + array(
 				'license_key' => $key,
 				'user_id'     => (int) $user_id,
 				'order_id'    => (int) $order_id,
@@ -109,7 +110,7 @@ class Licenses {
 				'major'       => self::lifetime_major( $plan ),
 				'created_at'  => $now,
 				'updated_at'  => $now,
-			) + $fields
+			)
 		);
 		if ( ! $wpdb->insert_id ) {
 			Events::error(
