@@ -46,6 +46,7 @@ final class Plugin {
 		Demos::hooks();
 		Accounts::hooks();
 		MyAccount::hooks();
+		Quotes::hooks();
 		add_action( 'rest_api_init', array( new Api(), 'routes' ) );
 		if ( is_admin() ) {
 			Admin::hooks();
