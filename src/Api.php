@@ -538,7 +538,7 @@ class Api {
 		$channel = (string) $request->get_param( 'channel' );
 		if ( isset( self::PROVIDERS[ $channel ] ) ) {
 			$provider = self::PROVIDERS[ $channel ];
-			$url      = $provider::checkout_url( $user, Plans::from_product( $product ), $license, $mode );
+			$url      = $provider::checkout_url( $user, Plans::from_product( $product ), $license, $mode, sanitize_text_field( (string) $request->get_param( 'coupon' ) ) );
 			if ( is_wp_error( $url ) ) {
 				return $this->fail( $url, 400 );
 			}

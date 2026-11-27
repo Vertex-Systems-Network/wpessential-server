@@ -47,6 +47,7 @@ final class Plugin {
 		Accounts::hooks();
 		MyAccount::hooks();
 		Quotes::hooks();
+		Kelviq::hooks();
 		add_action( 'rest_api_init', array( new Api(), 'routes' ) );
 		if ( is_admin() ) {
 			Admin::hooks();

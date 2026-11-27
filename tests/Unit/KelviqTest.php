@@ -14,7 +14,7 @@ final class KelviqTest extends TestCase
     {
         self::assertSame(['plan' => 'pro', 'period' => 'YEARLY'], Kelviq::plan_for('pro_yearly'));
         self::assertSame(['plan' => 'agency', 'period' => 'ONE_TIME'], Kelviq::plan_for('agency_lifetime'));
-        self::assertNull(Kelviq::plan_for('starter_monthly'), 'Starter is not published in Kelviq.');
+        self::assertSame(['plan' => 'starter', 'period' => 'MONTHLY'], Kelviq::plan_for('starter_monthly'));
         self::assertNull(Kelviq::plan_for('pro_weekly'));
         self::assertNull(Kelviq::plan_for('owner'));
     }
@@ -54,7 +54,26 @@ final class KelviqTest extends TestCase
 
         self::assertSame(['user' => 7, 'plan' => 'pro_yearly', 'renew' => 12, 'upgrade' => 0], Kelviq::intent($paid));
         self::assertNull(Kelviq::intent(['customer_id' => '8'] + $paid), 'Paid by another customer.');
-        self::assertNull(Kelviq::intent(['metadata' => ['wpes_user' => '7', 'wpes_plan' => 'starter_monthly']]), 'Plan not sold on Kelviq.');
+        self::assertNull(Kelviq::intent(['metadata' => ['wpes_user' => '7', 'wpes_plan' => 'owner_lifetime']]), 'Plan not sold on Kelviq.');
         self::assertNull(Kelviq::intent([]));
+    }
+
+    public function testWooCouponBecomesAKelviqDiscount(): void
+    {
+        $percent = Kelviq::discount_body(['code' => 'launch-20', 'type' => 'percent', 'amount' => '20', 'active' => true, 'expires' => 1893456000, 'limit' => 50]);
+        self::assertSame('LAUNCH20', $percent['code']);
+        self::assertSame('PERCENTAGE', $percent['discountType']);
+        self::assertSame(20, $percent['percentageOff']);
+        self::assertSame('ONCE', $percent['duration']);
+        self::assertSame('2030-01-01T00:00:00Z', $percent['redeemBy']);
+        self::assertSame(50, $percent['maxRedemptions']);
+
+        $fixed = Kelviq::discount_body(['code' => 'ten', 'type' => 'fixed_cart', 'amount' => '10', 'active' => true]);
+        self::assertSame(['FIXED_AMOUNT', '10.00', 'USD'], [$fixed['discountType'], $fixed['amountOff'], $fixed['currency']]);
+        self::assertArrayNotHasKey('redeemBy', $fixed);
+
+        self::assertNull(Kelviq::discount_body(['code' => 'off', 'type' => 'percent', 'amount' => '20', 'active' => false]), 'Trashed or expired.');
+        self::assertNull(Kelviq::discount_body(['code' => '---', 'type' => 'percent', 'amount' => '20', 'active' => true]), 'No usable code.');
+        self::assertNull(Kelviq::discount_body(['code' => 'x', 'type' => 'sign_up_fee', 'amount' => '5', 'active' => true]));
     }
 }
