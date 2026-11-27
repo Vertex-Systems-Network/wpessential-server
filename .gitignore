@@ -2,3 +2,5 @@
 /artifacts/
 /.phpunit.cache/
 /composer.lock
+/tools/kelviq/.env*
+/tools/kelviq/node_modules/

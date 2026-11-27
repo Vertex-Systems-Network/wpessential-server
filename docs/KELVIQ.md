@@ -26,7 +26,7 @@ To check the keys without printing them, put them in a project `.env.local` and 
 
 ## What is sold
 
-The Kelviq plans `pro` and `agency` are offered for `monthly → MONTHLY`, `yearly → YEARLY` and `lifetime → ONE_TIME`. Starter stays on WooCommerce because it is not published in Kelviq.
+The Kelviq plans `starter`, `pro` and `agency` are offered for `monthly → MONTHLY`, `yearly → YEARLY` and `lifetime → ONE_TIME`. `starter` is included.
 
 The `customerId` is the WordPress user ID, and it is always read on the server.
 
@@ -58,3 +58,30 @@ The `customerId` is the WordPress user ID, and it is always read on the server.
 - `subscription.updated`: sync auto-renew and the period end.
 - `subscription.plan_changed`: change the license tier.
 - `subscription.cancelled`: the subscription has ended, so expire the license. Never delete data.
+
+## Catalog (pricing as code)
+
+The catalog is `tools/kelviq/kelviq.config.ts`:
+- One product, `wpessential-pro`.
+- Four BOOLEAN features: `all-themes`, `early-access`, `priority-support` and `white-label`.
+- Three plans, `starter`, `pro` and `agency`, in USD. Each has a monthly price, a yearly price (20% off) and a ONE_TIME (lifetime) price, matching `src/Plans.php`.
+
+Run these from `tools/kelviq/`. Put the keys in `tools/kelviq/.env.local`, which is git-ignored.
+
+    npm install
+    npx kelviq env --check
+    npx kelviq push --prod --dry-run          # show the diff, then wait for approval
+    npx kelviq push --prod --yes --publish    # makes the plans visible to customers
+    npx kelviq status --prod
+
+## Trial and discounts are linked to WooCommerce
+
+- **Trial:** the 30-day Pro trial (`Trials`) stays ours. Kelviq plans have no trial.
+- **Discounts:** each WooCommerce coupon is mirrored as a Kelviq discount by `Kelviq::sync_coupon` when it is created, updated, trashed or deleted.
+  - Kelviq codes are uppercase letters and digits, so `launch-20` becomes `LAUNCH20`.
+  - The discount type is percent, fixed cart or fixed product.
+  - Expiry and usage limit carry over.
+  - The duration is ONCE.
+  - Kelviq discounts can only be switched on or off, so editing a coupon switches the old discount off and creates a new one.
+- The `coupon` parameter on `POST /account/checkout` with `channel=kelviq` pre-applies the coupon as `discountCode`. A coupon that has not been synced is refused.
+- Syncing only runs when Kelviq is configured. Every coupon saved after that creates a live discount.

@@ -1,0 +1,8 @@
+{
+  "name": "wpessential-server-kelviq",
+  "private": true,
+  "description": "Kelviq catalog for WPEssential Pro. Keys live in tools/kelviq/.env.local (git-ignored).",
+  "devDependencies": {
+    "@kelviq/cli": "0.5.0"
+  }
+}
