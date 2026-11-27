@@ -66,8 +66,10 @@ class Admin {
 		if ( '' === self::current() ) {
 			return;
 		}
-		wp_enqueue_style( 'wpes-admin', plugins_url( 'assets/admin.css', WPES_SERVER_FILE ), array(), WPES_SERVER_VERSION );
-		wp_enqueue_script( 'wpes-admin', plugins_url( 'assets/admin.js', WPES_SERVER_FILE ), array(), WPES_SERVER_VERSION, true );
+		// File time as version: every deploy busts browser and CDN caches.
+		$ver = static fn ( $file ) => WPES_SERVER_VERSION . '.' . (int) filemtime( WPES_SERVER_DIR . '/assets/' . $file );
+		wp_enqueue_style( 'wpes-admin', plugins_url( 'assets/admin.css', WPES_SERVER_FILE ), array(), $ver( 'admin.css' ) );
+		wp_enqueue_script( 'wpes-admin', plugins_url( 'assets/admin.js', WPES_SERVER_FILE ), array(), $ver( 'admin.js' ), true );
 	}
 
 	/**
