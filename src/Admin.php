@@ -381,44 +381,120 @@ class Admin {
 	 * Settings screen.
 	 */
 	public static function settings() {
-		$s = Plugin::settings();
-		echo '<div class="wrap"><h1>' . esc_html__( 'WPEssential Server settings', 'wpessential-server' ) . '</h1>';
-		echo '<form method="post" enctype="multipart/form-data" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">' . wp_nonce_field( 'wpes_settings', '_wpnonce', true, false ) . '<input type="hidden" name="action" value="wpes_settings"><table class="form-table">'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Nonce markup.
-		$rows = array(
+		$s     = Plugin::settings();
+		$ls    = LemonSqueezy::secrets();
+		$kq    = Kelviq::secrets();
+		$check = static fn ( $key ) => checked( ! empty( $s[ $key ] ), true, false );
+		$box   = static fn ( $key, $label ) => '<label class="wpes-check"><input type="checkbox" name="' . esc_attr( $key ) . '" value="1"' . $check( $key ) . '> ' . esc_html( $label ) . '</label>';
+		$field = static fn ( $label, $control, $help = '' ) => '<div class="wpes-field"><div class="wpes-field__label">' . esc_html( $label ) . '</div><div class="wpes-field__control">' . $control . ( '' !== $help ? '<p class="description">' . esc_html( $help ) . '</p>' : '' ) . '</div></div>';
+		$state = static fn ( $on ) => '<span class="wpes-pill ' . ( $on ? 'is-on' : 'is-off' ) . '">' . esc_html( $on ? __( 'Ready', 'wpessential-server' ) : __( 'Off or incomplete', 'wpessential-server' ) ) . '</span>';
+		$code  = static fn ( $url ) => '<code class="wpes-copy">' . esc_html( $url ) . '</code>';
+
+		echo '<div class="wrap wpes-settings"><h1>' . esc_html__( 'Settings', 'wpessential-server' ) . '</h1>';
+		if ( isset( $_GET['updated'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Display only.
+			echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Settings saved.', 'wpessential-server' ) . '</p></div>';
+		}
+		echo '<form method="post" enctype="multipart/form-data" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">' . wp_nonce_field( 'wpes_settings', '_wpnonce', true, false ) . '<input type="hidden" name="action" value="wpes_settings"><input type="hidden" name="wpes_tab" value="general" data-wpes-tab-field>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Nonce markup.
+		echo '<div class="wpes-layout"><nav class="wpes-side" aria-label="' . esc_attr__( 'Settings sections', 'wpessential-server' ) . '">';
+		foreach ( array(
+			'general'   => array( __( 'General', 'wpessential-server' ), array() ),
+			'demos'     => array( __( 'Demos', 'wpessential-server' ), array() ),
+			'payments'  => array(
+				__( 'Payments', 'wpessential-server' ),
+				array(
+					'bank'         => __( 'Bank & local methods', 'wpessential-server' ),
+					'lemonsqueezy' => __( 'Lemon Squeezy', 'wpessential-server' ),
+					'kelviq'       => __( 'Kelviq', 'wpessential-server' ),
+				),
+			),
+			'endpoints' => array( __( 'Integration', 'wpessential-server' ), array() ),
+		) as $id => [ $label, $children ] ) {
+			$first = $children ? array_key_first( $children ) : $id;
+			echo '<a class="wpes-side__item" href="#' . esc_attr( $first ) . '" data-wpes-tab="' . esc_attr( $first ) . '">' . esc_html( $label ) . '</a>';
+			foreach ( $children as $child => $child_label ) {
+				echo '<a class="wpes-side__item wpes-side__item--sub" href="#' . esc_attr( $child ) . '" data-wpes-tab="' . esc_attr( $child ) . '">' . esc_html( $child_label ) . '</a>';
+			}
+		}
+		echo '</nav><div class="wpes-panels">';
+
+		// General.
+		echo '<section class="wpes-panel" id="general" data-wpes-panel><h2>' . esc_html__( 'General', 'wpessential-server' ) . '</h2>';
+		foreach ( array(
 			'grace_days'    => array( __( 'Grace period (days)', 'wpessential-server' ), __( 'Licenses keep working this long after the end date while a renewal is paid.', 'wpessential-server' ) ),
 			'remind_days'   => array( __( 'Renew / remind before (days)', 'wpessential-server' ), __( 'Renewal orders are created (or reminders sent) this many days before the end date.', 'wpessential-server' ) ),
 			'token_days'    => array( __( 'Dashboard sign-in lasts (days)', 'wpessential-server' ), '' ),
 			'download_mins' => array( __( 'Download links last (minutes)', 'wpessential-server' ), '' ),
 			'event_days'    => array( __( 'Keep events (days)', 'wpessential-server' ), __( 'Older events are deleted by the daily job (minimum 30).', 'wpessential-server' ) ),
-		);
-		foreach ( $rows as $key => $row ) {
-			echo '<tr><th>' . esc_html( $row[0] ) . '</th><td><input type="number" min="1" name="' . esc_attr( $key ) . '" value="' . (int) $s[ $key ] . '">' . ( $row[1] ? '<p class="description">' . esc_html( $row[1] ) . '</p>' : '' ) . '</td></tr>';
+		) as $key => $row ) {
+			echo $field( $row[0], '<input type="number" min="1" class="small-text" name="' . esc_attr( $key ) . '" value="' . (int) $s[ $key ] . '">', $row[1] ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built from escaped parts.
 		}
-		echo '<tr><th>' . esc_html__( 'Free staging sites', 'wpessential-server' ) . '</th><td><label><input type="checkbox" name="free_staging" value="1"' . checked( $s['free_staging'], 1, false ) . '> ' . esc_html__( 'Do not count localhost, *.local, *.test and staging.* domains against the website limit.', 'wpessential-server' ) . '</label></td></tr>';
-		echo '<tr><th>' . esc_html__( 'Live demos', 'wpessential-server' ) . '</th><td><label><input type="checkbox" name="playground" value="1"' . checked( $s['playground'], 1, false ) . '> ' . esc_html__( 'Open demos in WordPress Playground (runs in the visitor\'s browser, no demo sites to host).', 'wpessential-server' ) . '</label>';
-		echo '<p class="description">' . ( is_readable( Playground::theme_path() ) ? esc_html( sprintf( /* translators: %s: size. */ __( 'Theme zip uploaded (%s). Upload a new one after each release:', 'wpessential-server' ), size_format( filesize( Playground::theme_path() ) ) ) ) : esc_html__( 'Upload the theme zip to enable live demos:', 'wpessential-server' ) ) . '</p><p><input type="file" name="wpes_theme_zip" accept=".zip"></p></td></tr>';
-		// Payments.
-		$ls = LemonSqueezy::secrets();
-		echo '<tr><th colspan="2"><h2>' . esc_html__( 'Payments', 'wpessential-server' ) . '</h2><p class="description">' . esc_html__( 'JazzCash, EasyPaisa, Bank Alfalah and Direct bank transfer are WooCommerce payment methods: switch them on or off under WooCommerce → Settings → Payments. Their paid orders create licenses automatically.', 'wpessential-server' ) . '</p></th></tr>';
-		echo '<tr><th>' . esc_html__( 'Bank transfer', 'wpessential-server' ) . '</th><td><label><input type="checkbox" name="bank_grace" value="1"' . checked( $s['bank_grace'], 1, false ) . '> ' . esc_html__( 'Keep the customer\'s license working while you check their transfer for', 'wpessential-server' ) . '</label> <input type="number" min="1" max="30" name="bank_grace_days" value="' . (int) $s['bank_grace_days'] . '" style="width:5em"> ' . esc_html__( 'days', 'wpessential-server' );
-		echo '<p><label><input type="checkbox" name="receipts" value="1"' . checked( $s['receipts'], 1, false ) . '> ' . esc_html__( 'Let customers upload a transfer receipt on their order (JPG, PNG or PDF, up to 5 MB, stored privately).', 'wpessential-server' ) . '</label></p></td></tr>';
-		echo '<tr><th>' . esc_html__( 'Lemon Squeezy (USD, card and PayPal)', 'wpessential-server' ) . '</th><td><label><input type="checkbox" name="ls_enabled" value="1"' . checked( $s['ls_enabled'], 1, false ) . '> ' . esc_html__( 'Offer card and PayPal checkout for international customers', 'wpessential-server' ) . '</label> <label style="margin-left:1em"><input type="checkbox" name="ls_test" value="1"' . checked( $s['ls_test'], 1, false ) . '> ' . esc_html__( 'Test mode', 'wpessential-server' ) . '</label>';
-		echo '<p><label>' . esc_html__( 'Store ID', 'wpessential-server' ) . ' <input type="text" name="ls_store_id" value="' . esc_attr( (string) $s['ls_store_id'] ) . '" class="regular-text"></label></p>';
-		echo '<p><label>' . esc_html__( 'API key', 'wpessential-server' ) . ' <input type="password" name="ls_api_key" value="" autocomplete="new-password" class="regular-text" placeholder="' . esc_attr( '' !== $ls['api_key'] ? __( 'Saved. Type a new one to replace it.', 'wpessential-server' ) : '' ) . '"></label></p>';
-		echo '<p><label>' . esc_html__( 'Webhook signing secret', 'wpessential-server' ) . ' <input type="password" name="ls_secret" value="" autocomplete="new-password" class="regular-text" placeholder="' . esc_attr( '' !== $ls['secret'] ? __( 'Saved. Type a new one to replace it.', 'wpessential-server' ) : '' ) . '"></label></p>';
-		echo '<p class="description">' . esc_html__( 'Webhook URL (events: order_created, order_refunded, subscription_created, subscription_updated, subscription_payment_success, subscription_cancelled, subscription_resumed, subscription_expired):', 'wpessential-server' ) . ' <code>' . esc_html( rest_url( Api::NS . '/lemonsqueezy' ) ) . '</code></p>';
-		echo '<p class="description">' . esc_html__( 'Put each plan\'s Lemon Squeezy variant ID on its WooCommerce product. Status:', 'wpessential-server' ) . ' <strong>' . esc_html( LemonSqueezy::enabled() ? __( 'ready', 'wpessential-server' ) : __( 'off or incomplete', 'wpessential-server' ) ) . '</strong></p></td></tr>';
-		$kq = Kelviq::secrets();
-		echo '<tr><th>' . esc_html__( 'Kelviq (USD, card, Apple Pay, Google Pay, PayPal)', 'wpessential-server' ) . '</th><td><label><input type="checkbox" name="kq_enabled" value="1"' . checked( $s['kq_enabled'], 1, false ) . '> ' . esc_html__( 'Offer Kelviq checkout', 'wpessential-server' ) . '</label> <label style="margin-left:1em"><input type="checkbox" name="kq_live" value="1"' . checked( $s['kq_live'], 1, false ) . '> ' . esc_html__( 'Live (production)', 'wpessential-server' ) . '</label> <label style="margin-left:1em"><input type="checkbox" name="kq_tax_inclusive" value="1"' . checked( $s['kq_tax_inclusive'], 1, false ) . '> ' . esc_html__( 'Prices include tax', 'wpessential-server' ) . '</label>';
-		echo '<p><label>' . esc_html__( 'Kelviq plan identifier (one one-time plan for every order)', 'wpessential-server' ) . ' <input type="text" name="kq_plan" value="' . esc_attr( (string) $s['kq_plan'] ) . '" class="regular-text"></label></p>';
-		echo '<p><label>' . esc_html__( 'Server API key', 'wpessential-server' ) . ' <input type="password" name="kq_api_key" value="" autocomplete="new-password" class="regular-text" placeholder="' . esc_attr( '' !== $kq['api_key'] ? __( 'Saved. Type a new one to replace it.', 'wpessential-server' ) : '' ) . '"></label></p>';
-		echo '<p><label>' . esc_html__( 'Webhook signing secret', 'wpessential-server' ) . ' <input type="password" name="kq_secret" value="" autocomplete="new-password" class="regular-text" placeholder="' . esc_attr( '' !== $kq['secret'] ? __( 'Saved. Type a new one to replace it.', 'wpessential-server' ) : '' ) . '"></label></p>';
-		echo '<p class="description">' . esc_html__( 'Plans, prices (each plan\'s USD price) and coupons stay in WooCommerce; nothing needs changing in Kelviq. Webhook URL (events: checkout.completed, invoice.payment_failed, subscription.created, subscription.updated, subscription.plan_changed, subscription.cancelled):', 'wpessential-server' ) . ' <code>' . esc_html( rest_url( Api::NS . '/kelviq/webhooks' ) ) . '</code></p>';
-		echo '<p class="description">' . esc_html__( 'wp-config.php constants KELVIQ_SERVER_API_KEY, KELVIQ_WEBHOOK_SECRET and KELVIQ_ENV override these fields. Status:', 'wpessential-server' ) . ' <strong>' . esc_html( Kelviq::enabled() ? __( 'ready', 'wpessential-server' ) : __( 'off or incomplete', 'wpessential-server' ) ) . '</strong></p></td></tr>';
-		echo '<tr><th>' . esc_html__( 'Theme endpoint', 'wpessential-server' ) . '</th><td><code>' . esc_html( rest_url( Api::NS . '/license' ) ) . '</code><p class="description">' . esc_html__( 'Use this as the license endpoint and the demos manifest URL below in the theme.', 'wpessential-server' ) . '</p><code>' . esc_html( rest_url( Api::NS . '/demos' ) ) . '</code></td></tr>';
-		echo '</table>';
-		submit_button();
-		echo '</form></div>';
+		echo $field( __( 'Free staging sites', 'wpessential-server' ), $box( 'free_staging', __( 'Do not count localhost, *.local, *.test and staging.* domains against the website limit.', 'wpessential-server' ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built from escaped parts.
+		echo '</section>';
+
+		// Demos.
+		echo '<section class="wpes-panel" id="demos" data-wpes-panel><h2>' . esc_html__( 'Demos', 'wpessential-server' ) . '</h2>';
+		$zip = is_readable( Playground::theme_path() ) ? sprintf( /* translators: %s: size. */ __( 'Theme zip uploaded (%s). Upload a new one after each release.', 'wpessential-server' ), size_format( filesize( Playground::theme_path() ) ) ) : __( 'Upload the theme zip to enable live demos.', 'wpessential-server' );
+		echo $field( __( 'Live demos', 'wpessential-server' ), $box( 'playground', __( 'Open demos in WordPress Playground (runs in the visitor\'s browser, no demo sites to host).', 'wpessential-server' ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built from escaped parts.
+		echo $field( __( 'Theme zip', 'wpessential-server' ), '<input type="file" name="wpes_theme_zip" accept=".zip">', $zip ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built from escaped parts.
+		echo '</section>';
+
+		// Payments: bank and WooCommerce methods.
+		echo '<section class="wpes-panel" id="bank" data-wpes-panel><h2>' . esc_html__( 'Bank & local methods', 'wpessential-server' ) . '</h2><p class="wpes-lead">' . esc_html__( 'JazzCash, EasyPaisa, Bank Alfalah and Direct bank transfer are WooCommerce payment methods: switch them on or off under WooCommerce → Settings → Payments. Their paid orders create licenses automatically.', 'wpessential-server' ) . '</p>';
+		echo $field( __( 'Bank transfer', 'wpessential-server' ), $box( 'bank_grace', __( 'Keep the customer\'s license working while you check their transfer', 'wpessential-server' ) ) . ' <input type="number" min="1" max="30" class="small-text" name="bank_grace_days" value="' . (int) $s['bank_grace_days'] . '"> ' . esc_html__( 'days', 'wpessential-server' ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built from escaped parts.
+		echo $field( __( 'Receipts', 'wpessential-server' ), $box( 'receipts', __( 'Let customers upload a transfer receipt on their order (JPG, PNG or PDF, up to 5 MB, stored privately).', 'wpessential-server' ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built from escaped parts.
+		echo '</section>';
+
+		// Lemon Squeezy.
+		echo '<section class="wpes-panel" id="lemonsqueezy" data-wpes-panel><h2>' . esc_html__( 'Lemon Squeezy', 'wpessential-server' ) . ' ' . $state( LemonSqueezy::enabled() ) . '</h2><p class="wpes-lead">' . esc_html__( 'USD checkout by card and PayPal for international customers. Put each plan\'s Lemon Squeezy variant ID on its WooCommerce product.', 'wpessential-server' ) . '</p>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built from escaped parts.
+		echo $field( __( 'Status', 'wpessential-server' ), $box( 'ls_enabled', __( 'Offer Lemon Squeezy checkout', 'wpessential-server' ) ) . $box( 'ls_test', __( 'Test mode', 'wpessential-server' ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built from escaped parts.
+		echo $field( __( 'Store ID', 'wpessential-server' ), '<input type="text" class="regular-text" name="ls_store_id" value="' . esc_attr( (string) $s['ls_store_id'] ) . '">' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built from escaped parts.
+		echo $field( __( 'API key', 'wpessential-server' ), self::secret_field( 'ls_api_key', '' !== $ls['api_key'] ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built from escaped parts.
+		echo $field( __( 'Webhook signing secret', 'wpessential-server' ), self::secret_field( 'ls_secret', '' !== $ls['secret'] ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built from escaped parts.
+		echo $field( __( 'Webhook URL', 'wpessential-server' ), $code( rest_url( Api::NS . '/lemonsqueezy' ) ), __( 'Events: order_created, order_refunded, subscription_created, subscription_updated, subscription_payment_success, subscription_cancelled, subscription_resumed, subscription_expired.', 'wpessential-server' ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built from escaped parts.
+		echo '</section>';
+
+		// Kelviq.
+		$kq_locked = static fn ( $name ) => defined( $name ) || false !== getenv( $name );
+		echo '<section class="wpes-panel" id="kelviq" data-wpes-panel><h2>' . esc_html__( 'Kelviq', 'wpessential-server' ) . ' ' . $state( Kelviq::enabled() ) . '</h2><p class="wpes-lead">' . esc_html__( 'USD checkout by card, Apple Pay, Google Pay and PayPal. Plans, prices and coupons stay in WooCommerce; nothing needs changing in Kelviq.', 'wpessential-server' ) . '</p>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built from escaped parts.
+		echo $field( __( 'Status', 'wpessential-server' ), $box( 'kq_enabled', __( 'Offer Kelviq checkout', 'wpessential-server' ) ) . $box( 'kq_live', __( 'Live (production)', 'wpessential-server' ) ) . $box( 'kq_tax_inclusive', __( 'Prices include tax', 'wpessential-server' ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built from escaped parts.
+		echo $field( __( 'Plan identifier', 'wpessential-server' ), '<input type="text" class="regular-text" name="kq_plan" value="' . esc_attr( (string) $s['kq_plan'] ) . '">', __( 'One one-time Kelviq plan used for every order.', 'wpessential-server' ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built from escaped parts.
+		echo $field( __( 'Server API key', 'wpessential-server' ), self::secret_field( 'kq_api_key', '' !== $kq['api_key'], $kq_locked( 'KELVIQ_SERVER_API_KEY' ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built from escaped parts.
+		echo $field( __( 'Webhook signing secret', 'wpessential-server' ), self::secret_field( 'kq_secret', '' !== $kq['secret'], $kq_locked( 'KELVIQ_WEBHOOK_SECRET' ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built from escaped parts.
+		echo $field( __( 'Webhook URL', 'wpessential-server' ), $code( rest_url( Api::NS . '/kelviq/webhooks' ) ), __( 'Events: checkout.completed, invoice.payment_failed, subscription.created, subscription.updated, subscription.plan_changed, subscription.cancelled.', 'wpessential-server' ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built from escaped parts.
+		echo '</section>';
+
+		// Integration.
+		echo '<section class="wpes-panel" id="endpoints" data-wpes-panel><h2>' . esc_html__( 'Integration', 'wpessential-server' ) . '</h2><p class="wpes-lead">' . esc_html__( 'Use these in the theme: the license endpoint and the demos manifest URL.', 'wpessential-server' ) . '</p>';
+		echo $field( __( 'License endpoint', 'wpessential-server' ), $code( rest_url( Api::NS . '/license' ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built from escaped parts.
+		echo $field( __( 'Demos manifest', 'wpessential-server' ), $code( rest_url( Api::NS . '/demos' ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built from escaped parts.
+		echo '</section>';
+
+		echo '<div class="wpes-savebar">';
+		submit_button( __( 'Save settings', 'wpessential-server' ), 'primary', 'submit', false );
+		echo '</div></div></div></form></div>';
+	}
+
+	/**
+	 * A secret input: when saved, a green tick, a mask, Replace and Delete; when set in
+	 * wp-config.php, locked.
+	 *
+	 * @param string $name   Field name.
+	 * @param bool   $saved  A value is saved.
+	 * @param bool   $locked Set by a wp-config.php constant or the environment.
+	 * @return string
+	 */
+	private static function secret_field( $name, $saved, $locked = false ) {
+		if ( $locked ) {
+			return '<span class="wpes-secret is-saved"><span class="wpes-secret__tick" aria-hidden="true">✓</span><span class="wpes-secret__mask">••••••••</span><span class="wpes-secret__note">' . esc_html__( 'Set in wp-config.php', 'wpessential-server' ) . '</span></span>';
+		}
+		$input = '<input type="password" name="' . esc_attr( $name ) . '" value="" autocomplete="new-password" class="regular-text" aria-label="' . esc_attr__( 'New value', 'wpessential-server' ) . '">';
+		if ( ! $saved ) {
+			return $input;
+		}
+		return '<span class="wpes-secret is-saved" data-wpes-secret><span class="wpes-secret__tick" aria-label="' . esc_attr__( 'Saved', 'wpessential-server' ) . '">✓</span><span class="wpes-secret__mask">••••••••</span>'
+			. '<button type="button" class="button" data-wpes-replace>' . esc_html__( 'Replace', 'wpessential-server' ) . '</button>'
+			. '<button type="submit" class="button wpes-button-danger" name="wpes_delete" value="' . esc_attr( $name ) . '" data-wpes-confirm="' . esc_attr__( 'Delete this saved key? Checkout stops working until a new one is added.', 'wpessential-server' ) . '">' . esc_html__( 'Delete', 'wpessential-server' ) . '</button>'
+			. '<span class="wpes-secret__new" hidden>' . $input . '</span></span>';
 	}
 
 	/**
@@ -658,6 +734,10 @@ class Admin {
 				$secrets[ $key ] = $value;
 			}
 		}
+		$delete = isset( $_POST['wpes_delete'] ) ? sanitize_key( wp_unslash( $_POST['wpes_delete'] ) ) : '';
+		if ( isset( $fields[ $delete ] ) ) {
+			$secrets[ $fields[ $delete ] ] = '';
+		}
 		update_option( LemonSqueezy::SECRETS, $secrets, false );
 		$out['kq_enabled']       = empty( $_POST['kq_enabled'] ) ? 0 : 1;
 		$out['kq_live']          = empty( $_POST['kq_live'] ) ? 0 : 1;
@@ -673,12 +753,20 @@ class Admin {
 				$kq_secrets[ $key ] = $value;
 			}
 		}
+		$kq_fields = array(
+			'kq_api_key' => 'api_key',
+			'kq_secret'  => 'secret',
+		);
+		if ( isset( $kq_fields[ $delete ] ) ) {
+			$kq_secrets[ $kq_fields[ $delete ] ] = '';
+		}
 		update_option( Kelviq::SECRETS, $kq_secrets, false );
 		if ( ! empty( $_FILES['wpes_theme_zip']['tmp_name'] ) && '.zip' === strtolower( substr( sanitize_file_name( wp_unslash( $_FILES['wpes_theme_zip']['name'] ?? '' ) ), -4 ) ) ) {
 			move_uploaded_file( $_FILES['wpes_theme_zip']['tmp_name'], Playground::theme_path() ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized,Generic.PHP.ForbiddenFunctions.Found -- Uploaded zip moved to the private folder.
 		}
 		update_option( 'wpes_server_settings', $out );
-		wp_safe_redirect( admin_url( 'admin.php?page=wpes-settings&updated=1' ) );
+		$tab = isset( $_POST['wpes_tab'] ) ? sanitize_key( wp_unslash( $_POST['wpes_tab'] ) ) : '';
+		wp_safe_redirect( admin_url( 'admin.php?page=wpes-settings&updated=1' ) . ( '' !== $tab ? '#' . $tab : '' ) );
 		exit;
 	}
 
