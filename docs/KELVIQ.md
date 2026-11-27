@@ -1,5 +1,12 @@
 # Kelviq billing
 
+## Design: one core, many payment providers
+
+- The source of truth is our own plans (`Plans`) and licenses (`Licenses`). Every paid purchase goes through `Fulfilment::apply()`, which creates, renews or upgrades a license. Kelviq license keys are not used.
+- A provider only takes the payment. It has `enabled()` and `checkout_url( $user_id, $plan, $license_id, $mode )`, is listed in `Api::PROVIDERS`, and calls `Fulfilment::apply()` from its verified webhook.
+- A WooCommerce gateway, such as a Pakistani bank's plugin, needs no code, because paid WooCommerce orders already fulfil through `Orders`.
+- A bank with its own API needs one class like `Kelviq` and one line in `Api::PROVIDERS`.
+
 `src/Kelviq.php` talks to the Kelviq REST API over HTTP, because there is no official PHP SDK. The calls mirror `@kelviq/node-sdk`.
 
 ## Configuration
@@ -44,7 +51,8 @@ The `customerId` is the WordPress user ID, and it is always read on the server.
 
 ## Webhook TODOs (in `Kelviq::dispatch`)
 
-- `checkout.completed`: create, renew or upgrade the license through Fulfilment, using the metadata `wpes_user`, `wpes_plan`, `wpes_license` and `wpes_mode`.
+- `checkout.completed` is done: `Fulfilment::apply()` runs from the server-written metadata, and the paying customer must match.
+- Recurring renewals are not handled yet. They need `invoice.paid` to be mapped to the license through the subscription id.
 - `invoice.payment_failed`: the renewal failed. Notify the customer and start the grace period.
 - `subscription.created`: store the Kelviq subscription ID on the license.
 - `subscription.updated`: sync auto-renew and the period end.

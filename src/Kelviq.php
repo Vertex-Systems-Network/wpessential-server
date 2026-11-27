@@ -219,12 +219,13 @@ class Kelviq {
 	 * Hosted checkout URL for one of our plan keys.
 	 *
 	 * @param int    $user_id    Buyer (signed-in user, from the server).
-	 * @param string $key        Plan key, e.g. pro_yearly.
+	 * @param array  $plan_row   Plan from Plans::from_product() (key e.g. pro_yearly).
 	 * @param int    $license_id License to renew/upgrade (0 for a new one).
 	 * @param string $mode       buy|renew|upgrade.
 	 * @return string|\WP_Error
 	 */
-	public static function checkout_url( $user_id, $key, $license_id = 0, $mode = 'buy' ) {
+	public static function checkout_url( $user_id, $plan_row, $license_id = 0, $mode = 'buy' ) {
+		$key  = (string) ( $plan_row['key'] ?? '' );
 		$plan = self::plan_for( $key );
 		if ( null === $plan ) {
 			return new \WP_Error( 'plan', __( 'That plan is not sold by card here.', 'wpessential-server' ) );
@@ -356,15 +357,62 @@ class Kelviq {
 	}
 
 	/**
+	 * Purchase intent from checkout metadata (pure, unit-tested). The metadata is written by
+	 * checkout_url() on the server, and the paying customer must be the same user.
+	 *
+	 * @param array $item data.object of checkout.completed.
+	 * @return array{user:int,plan:string,renew:int,upgrade:int}|null
+	 */
+	public static function intent( array $item ) {
+		$meta     = is_array( $item['metadata'] ?? null ) ? $item['metadata'] : array();
+		$user     = (int) ( $meta['wpes_user'] ?? 0 );
+		$plan     = (string) ( $meta['wpes_plan'] ?? '' );
+		$customer = (string) ( $item['customer_id'] ?? $item['customerId'] ?? $item['customer']['customer_id'] ?? '' );
+		if ( $user <= 0 || null === self::plan_for( $plan ) || ( '' !== $customer && (string) $user !== $customer ) ) {
+			return null;
+		}
+		$license = (int) ( $meta['wpes_license'] ?? 0 );
+		$mode    = (string) ( $meta['wpes_mode'] ?? 'buy' );
+		return array(
+			'user'    => $user,
+			'plan'    => $plan,
+			'renew'   => 'renew' === $mode ? $license : 0,
+			'upgrade' => 'upgrade' === $mode ? $license : 0,
+		);
+	}
+
+	/**
+	 * A paid checkout: create, renew or upgrade the license (the same core as WooCommerce orders).
+	 *
+	 * @param array $item data.object.
+	 */
+	private static function checkout_completed( array $item ) {
+		$ref    = 'kq:' . (string) ( $item['id'] ?? '' );
+		$intent = self::intent( $item );
+		$plan   = $intent ? Plans::from_product( Plans::product_id( $intent['plan'] ) ) : null;
+		if ( ! $intent || ! $plan || ! get_userdata( $intent['user'] ) ) {
+			Events::error( 'kelviq.checkout_unmatched', sprintf( 'Kelviq checkout %s has no matching buyer or plan.', $ref ), array() );
+			return;
+		}
+		foreach ( array( 'renew', 'upgrade' ) as $k ) {
+			$row = $intent[ $k ] ? Licenses::get( $intent[ $k ] ) : null;
+			if ( $intent[ $k ] && ( ! $row || (int) $row['user_id'] !== $intent['user'] ) ) {
+				$intent[ $k ] = 0; // Not the buyer's license: create a new one instead.
+			}
+		}
+		Fulfilment::apply( $intent['user'], $plan, $intent['renew'], $intent['upgrade'], 0, $ref );
+	}
+
+	/**
 	 * Route one event.
 	 *
 	 * @param string $type   Event type.
-	 * @param array  $resource data.object.
+	 * @param array  $item data.object.
 	 */
-	private static function dispatch( $type, array $resource ) {
+	private static function dispatch( $type, array $item ) {
 		switch ( $type ) {
 			case 'checkout.completed':
-				// TODO: create / renew / upgrade the license through Fulfilment from metadata (wpes_user, wpes_plan, wpes_license, wpes_mode).
+				self::checkout_completed( $item );
 				break;
 			case 'invoice.payment_failed':
 				// TODO: a renewal failed — notify the customer and start the grace period (Renewals).
@@ -382,6 +430,6 @@ class Kelviq {
 				// TODO: the subscription has ended (not just scheduled to) — expire the license; never delete data.
 				break;
 		}
-		do_action( 'wpes_kelviq_event', $type, $resource );
+		do_action( 'wpes_kelviq_event', $type, $item );
 	}
 }

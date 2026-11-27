@@ -17,6 +17,16 @@ class Api {
 	const NS = 'wpessential-server/v1';
 
 	/**
+	 * Hosted-checkout providers by account channel. Each has enabled() and
+	 * checkout_url( $user_id, array $plan, $license_id, $mode ) and fulfils through Fulfilment::apply().
+	 * A new gateway (e.g. a Pakistani bank) is one class plus one line here; WooCommerce gateways need none.
+	 */
+	const PROVIDERS = array(
+		'international' => LemonSqueezy::class,
+		'kelviq'        => Kelviq::class,
+	);
+
+	/**
 	 * Routes.
 	 */
 	public function routes() {
@@ -494,10 +504,8 @@ class Api {
 	 */
 	public static function channels() {
 		return array(
-			'local'         => true,
-			'international' => LemonSqueezy::enabled(),
-			'kelviq'        => Kelviq::enabled(),
-		);
+			'local' => true,
+		) + array_map( static fn ( $provider ) => $provider::enabled(), self::PROVIDERS );
 	}
 
 	/**
@@ -525,23 +533,12 @@ class Api {
 			}
 			$extra[ 'renew' === $mode ? 'wpes_renew' : 'wpes_upgrade' ] = $license;
 		}
-		// Kelviq: card checkout for the plans published there (pro, agency).
-		if ( 'kelviq' === (string) $request->get_param( 'channel' ) ) {
-			$url = Kelviq::checkout_url( $user, $key, $license, $mode );
-			if ( is_wp_error( $url ) ) {
-				return $this->fail( $url, 400 );
-			}
-			return rest_ensure_response(
-				array(
-					'success' => true,
-					'url'     => $url,
-				)
-			);
-		}
 		// International customers pay by card or PayPal on Lemon Squeezy (USD); everyone else
 		// uses the WooCommerce checkout (JazzCash, EasyPaisa, Bank Alfalah, bank transfer, PKR).
-		if ( 'international' === (string) $request->get_param( 'channel' ) ) {
-			$url = LemonSqueezy::checkout_url( $user, Plans::from_product( $product ), $license, $mode );
+		$channel = (string) $request->get_param( 'channel' );
+		if ( isset( self::PROVIDERS[ $channel ] ) ) {
+			$provider = self::PROVIDERS[ $channel ];
+			$url      = $provider::checkout_url( $user, Plans::from_product( $product ), $license, $mode );
 			if ( is_wp_error( $url ) ) {
 				return $this->fail( $url, 400 );
 			}

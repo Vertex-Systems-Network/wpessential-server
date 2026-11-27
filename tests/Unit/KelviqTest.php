@@ -47,4 +47,14 @@ final class KelviqTest extends TestCase
         self::assertFalse(Kelviq::access_in($response, 'sites'));
         self::assertFalse(Kelviq::access_in([], 'sites'));
     }
+
+    public function testCheckoutIntentComesFromServerMetadataAndMatchingCustomer(): void
+    {
+        $paid = ['id' => 'cs_1', 'customer_id' => '7', 'metadata' => ['wpes_user' => '7', 'wpes_plan' => 'pro_yearly', 'wpes_license' => '12', 'wpes_mode' => 'renew']];
+
+        self::assertSame(['user' => 7, 'plan' => 'pro_yearly', 'renew' => 12, 'upgrade' => 0], Kelviq::intent($paid));
+        self::assertNull(Kelviq::intent(['customer_id' => '8'] + $paid), 'Paid by another customer.');
+        self::assertNull(Kelviq::intent(['metadata' => ['wpes_user' => '7', 'wpes_plan' => 'starter_monthly']]), 'Plan not sold on Kelviq.');
+        self::assertNull(Kelviq::intent([]));
+    }
 }
