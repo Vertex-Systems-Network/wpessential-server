@@ -4,10 +4,12 @@
  *
  * There is no official PHP SDK, so this mirrors @kelviq/node-sdk over raw HTTP:
  * - Config comes from wp-config.php constants or the environment: KELVIQ_SERVER_API_KEY,
- *   KELVIQ_ENV (production|sandbox; unset means sandbox, like environmentFromEnv()) and
- *   KELVIQ_WEBHOOK_SECRET. Keys are never stored in the database or shown in the admin.
+ *   KELVIQ_ENV (production|sandbox) and KELVIQ_WEBHOOK_SECRET; otherwise from Settings → Kelviq
+ *   (keys kept in a non-autoloaded option and never shown again, like Lemon Squeezy).
  * - The Kelviq customerId is the signed-in WordPress user ID, always read on the server.
- * - Only the published plans are sold here: pro and agency, monthly / yearly / lifetime.
+ * - Plans, prices and coupons live in WooCommerce only. Kelviq has one shared one-time plan
+ *   (Settings → Kelviq plan identifier); each checkout sends the plan's USD price, less the
+ *   coupon, as customAmount. Renewals are new payments, like the WooCommerce flow.
  * - Webhooks are verified (webhook-id.webhook-timestamp.raw-body, HMAC-SHA256, v1,<hex>),
  *   handled once per event id, and answered 403 when the signature is wrong.
  *
@@ -28,18 +30,7 @@ class Kelviq {
 		'sandbox'    => array( 'https://sandboxapi.kelviq.com/api/v1', 'https://edge.sandboxapi.kelviq.com/api/v1' ),
 	);
 
-	/** Plans published in Kelviq (identifier => our tier). */
-	const PLANS = array( 'starter', 'pro', 'agency' );
-
-	/** Coupon meta holding the synced Kelviq discount: { id, hash }. */
-	const COUPON_META = '_wpes_kq_discount';
-
-	/** Our billing period => Kelviq chargePeriod. */
-	const PERIODS = array(
-		'monthly'  => 'MONTHLY',
-		'yearly'   => 'YEARLY',
-		'lifetime' => 'ONE_TIME',
-	);
+	const SECRETS = 'wpes_kq_secrets';
 
 	/** Accepted webhook clock skew, in seconds. */
 	const TOLERANCE = 300;
@@ -60,7 +51,33 @@ class Kelviq {
 			return (string) constant( $name );
 		}
 		$value = getenv( $name );
-		return false === $value ? '' : (string) $value;
+		if ( false !== $value && '' !== $value ) {
+			return (string) $value;
+		}
+		$saved = get_option( self::SECRETS, array() );
+		$saved = is_array( $saved ) ? $saved : array();
+		switch ( $name ) {
+			case 'KELVIQ_SERVER_API_KEY':
+				return (string) ( $saved['api_key'] ?? '' );
+			case 'KELVIQ_WEBHOOK_SECRET':
+				return (string) ( $saved['secret'] ?? '' );
+			case 'KELVIQ_ENV':
+				return Plugin::settings( 'kq_live' ) ? 'production' : 'sandbox';
+		}
+		return '';
+	}
+
+	/**
+	 * Saved secrets (for the settings screen: set or not).
+	 *
+	 * @return array{api_key:string,secret:string}
+	 */
+	public static function secrets() {
+		$s = get_option( self::SECRETS, array() );
+		return array(
+			'api_key' => is_array( $s ) && is_string( $s['api_key'] ?? null ) ? $s['api_key'] : '',
+			'secret'  => is_array( $s ) && is_string( $s['secret'] ?? null ) ? $s['secret'] : '',
+		);
 	}
 
 	/**
@@ -83,26 +100,26 @@ class Kelviq {
 	 * @return bool
 	 */
 	public static function enabled() {
-		return '' !== self::config( 'KELVIQ_SERVER_API_KEY' ) && null !== self::environment( self::config( 'KELVIQ_ENV' ) );
+		return (bool) Plugin::settings( 'kq_enabled' ) && '' !== (string) Plugin::settings( 'kq_plan' ) && '' !== self::config( 'KELVIQ_SERVER_API_KEY' ) && null !== self::environment( self::config( 'KELVIQ_ENV' ) );
 	}
 
 	// ---------------------------------------------------------------- pure helpers (unit-tested)
 
 	/**
-	 * Kelviq plan and period for one of our plan keys (e.g. pro_yearly), or null when not sold on Kelviq.
+	 * Amount after a WooCommerce coupon (pure, unit-tested).
 	 *
-	 * @param string $key Plan key.
-	 * @return array{plan:string,period:string}|null
+	 * @param float  $price  Plan price.
+	 * @param string $type   percent|fixed_cart|fixed_product ('' for none).
+	 * @param float  $amount Coupon amount.
+	 * @return float Never below zero, rounded to cents.
 	 */
-	public static function plan_for( $key ) {
-		$parts = explode( '_', (string) $key, 2 );
-		if ( 2 !== count( $parts ) || ! in_array( $parts[0], self::PLANS, true ) || ! isset( self::PERIODS[ $parts[1] ] ) ) {
-			return null;
+	public static function discounted( $price, $type, $amount ) {
+		if ( 'percent' === $type ) {
+			$price -= $price * min( 100, max( 0, (float) $amount ) ) / 100;
+		} elseif ( in_array( $type, array( 'fixed_cart', 'fixed_product' ), true ) ) {
+			$price -= max( 0, (float) $amount );
 		}
-		return array(
-			'plan'   => $parts[0],
-			'period' => self::PERIODS[ $parts[1] ],
-		);
+		return round( max( 0, (float) $price ), 2 );
 	}
 
 	/**
@@ -229,17 +246,22 @@ class Kelviq {
 	 * @return string|\WP_Error
 	 */
 	public static function checkout_url( $user_id, $plan_row, $license_id = 0, $mode = 'buy', $coupon = '' ) {
-		$key  = (string) ( $plan_row['key'] ?? '' );
-		$plan = self::plan_for( $key );
-		if ( null === $plan ) {
-			return new \WP_Error( 'plan', __( 'That plan is not sold by card here.', 'wpessential-server' ) );
+		$key   = (string) ( $plan_row['key'] ?? '' );
+		$price = (float) ( '' !== (string) ( $plan_row['usd_price'] ?? '' ) ? $plan_row['usd_price'] : ( $plan_row['price'] ?? 0 ) );
+		if ( '' === $key || $price <= 0 ) {
+			return new \WP_Error( 'plan', __( 'That plan has no USD price for card checkout.', 'wpessential-server' ) );
 		}
-		$discount = '';
+		$used = '';
 		if ( '' !== (string) $coupon ) {
-			$discount = self::coupon_discount_code( (string) $coupon );
-			if ( '' === $discount ) {
-				return new \WP_Error( 'coupon', __( 'That coupon is not valid for card checkout.', 'wpessential-server' ) );
+			$wc = self::usable_coupon( (string) $coupon, (int) ( $plan_row['product_id'] ?? 0 ) );
+			if ( null === $wc ) {
+				return new \WP_Error( 'coupon', __( 'That coupon is not valid for this plan.', 'wpessential-server' ) );
 			}
+			$price = self::discounted( $price, $wc->get_discount_type(), (float) $wc->get_amount() );
+			$used  = $wc->get_code();
+		}
+		if ( $price <= 0 ) {
+			return new \WP_Error( 'coupon', __( 'This coupon makes the plan free; ask support to apply it.', 'wpessential-server' ) );
 		}
 		$customer = self::ensure_customer( $user_id );
 		if ( is_wp_error( $customer ) ) {
@@ -248,20 +270,22 @@ class Kelviq {
 		$result = self::request(
 			'POST',
 			'/checkout/',
-			array_filter(
-				array(
-					'discountCode'   => $discount,
-					'planIdentifier' => $plan['plan'],
-					'chargePeriod'   => $plan['period'],
-					'customerId'     => (string) (int) $user_id,
-					'successUrl'     => self::success_url(),
-					'metadata'       => array(
-						'wpes_user'    => (string) (int) $user_id,
-						'wpes_plan'    => (string) $key,
-						'wpes_license' => (string) (int) $license_id,
-						'wpes_mode'    => in_array( $mode, array( 'renew', 'upgrade' ), true ) ? $mode : 'buy',
-					),
-				)
+			array(
+				'planIdentifier'   => (string) Plugin::settings( 'kq_plan' ),
+				'chargePeriod'     => 'ONE_TIME',
+				'customAmount'     => $price,
+				'currencyCode'     => 'USD',
+				'taxBehavior'      => Plugin::settings( 'kq_tax_inclusive' ) ? 'INCLUSIVE' : 'EXCLUSIVE',
+				'discountsEnabled' => false,
+				'customerId'       => (string) (int) $user_id,
+				'successUrl'       => self::success_url(),
+				'metadata'         => array(
+					'wpes_user'    => (string) (int) $user_id,
+					'wpes_plan'    => (string) $key,
+					'wpes_license' => (string) (int) $license_id,
+					'wpes_mode'    => in_array( $mode, array( 'renew', 'upgrade' ), true ) ? $mode : 'buy',
+					'wpes_coupon'  => $used,
+				),
 			)
 		);
 		if ( is_wp_error( $result ) ) {
@@ -337,125 +361,36 @@ class Kelviq {
 		return self::access_in( $result['body'], (string) $feature );
 	}
 
-	// ---------------------------------------------------------------- WooCommerce coupons → Kelviq discounts
+	// ---------------------------------------------------------------- WooCommerce coupons
 
 	/**
-	 * Kelviq code for a WooCommerce code: uppercase letters and numbers only.
+	 * A WooCommerce coupon this customer may use on this plan, or null.
+	 * Checks what a cart would: published, not expired, usage left, product restrictions.
 	 *
-	 * @param string $code Coupon code.
-	 * @return string
+	 * @param string $code       Coupon code.
+	 * @param int    $product_id Plan product.
+	 * @return \WC_Coupon|null
 	 */
-	public static function discount_code( $code ) {
-		return (string) preg_replace( '/[^A-Z0-9]/', '', strtoupper( (string) $code ) );
-	}
-
-	/**
-	 * Kelviq discount body for a coupon, or null when it cannot or should not exist (pure, unit-tested).
-	 *
-	 * Kelviq discounts are immutable except on/off, so any change creates a new discount.
-	 * WooCommerce coupons apply once (no recurring discounts), so duration is ONCE.
-	 *
-	 * @param array $c { code, type: percent|fixed_cart|fixed_product, amount, active, expires (unix|0), limit (0 = none) }.
-	 * @return array|null
-	 */
-	public static function discount_body( array $c ) {
-		$code   = self::discount_code( (string) ( $c['code'] ?? '' ) );
-		$amount = (float) ( $c['amount'] ?? 0 );
-		$type   = (string) ( $c['type'] ?? '' );
-		if ( '' === $code || $amount <= 0 || empty( $c['active'] ) || ! in_array( $type, array( 'percent', 'fixed_cart', 'fixed_product' ), true ) ) {
+	private static function usable_coupon( $code, $product_id ) {
+		if ( ! class_exists( 'WC_Coupon' ) || ! function_exists( 'wc_get_coupon_id_by_code' ) ) {
 			return null;
 		}
-		$expires = (int) ( $c['expires'] ?? 0 );
-		$body    = array(
-			'name'         => (string) ( $c['code'] ?? $code ),
-			'code'         => $code,
-			'duration'     => 'ONCE',
-			'discountType' => 'percent' === $type ? 'PERCENTAGE' : 'FIXED_AMOUNT',
-			'isActive'     => true,
-		);
-		if ( 'percent' === $type ) {
-			$body['percentageOff'] = (int) min( 100, round( $amount ) );
-		} else {
-			$body['amountOff'] = number_format( $amount, 2, '.', '' );
-			$body['currency']  = 'USD';
+		$id = (int) wc_get_coupon_id_by_code( $code );
+		if ( ! $id || 'publish' !== get_post_status( $id ) ) {
+			return null;
 		}
-		if ( $expires > 0 ) {
-			$body['redeemBy'] = gmdate( 'Y-m-d\TH:i:s\Z', $expires );
-		}
-		if ( (int) ( $c['limit'] ?? 0 ) > 0 ) {
-			$body['maxRedemptions'] = (int) $c['limit'];
-		}
-		return $body;
-	}
-
-	/**
-	 * Hooks: keep each WooCommerce coupon mirrored as a Kelviq discount.
-	 */
-	public static function hooks() {
-		add_action( 'woocommerce_new_coupon', array( __CLASS__, 'sync_coupon' ) );
-		add_action( 'woocommerce_update_coupon', array( __CLASS__, 'sync_coupon' ) );
-		add_action( 'trashed_post', array( __CLASS__, 'sync_coupon' ) );
-		add_action( 'before_delete_post', array( __CLASS__, 'sync_coupon' ) );
-	}
-
-	/**
-	 * Create, replace or switch off the Kelviq discount for one coupon.
-	 *
-	 * @param int $coupon_id Coupon post id.
-	 */
-	public static function sync_coupon( $coupon_id ) {
-		if ( 'shop_coupon' !== get_post_type( (int) $coupon_id ) || ! self::enabled() || ! class_exists( 'WC_Coupon' ) ) {
-			return;
-		}
-		$coupon  = new \WC_Coupon( (int) $coupon_id );
+		$coupon  = new \WC_Coupon( $id );
 		$expires = $coupon->get_date_expires();
-		$body    = self::discount_body(
-			array(
-				'code'    => $coupon->get_code(),
-				'type'    => $coupon->get_discount_type(),
-				'amount'  => $coupon->get_amount(),
-				'active'  => 'publish' === get_post_status( (int) $coupon_id ) && ! doing_action( 'before_delete_post' ) && ( ! $expires || $expires->getTimestamp() > time() ),
-				'expires' => $expires ? $expires->getTimestamp() : 0,
-				'limit'   => (int) $coupon->get_usage_limit(),
-			)
-		);
-		$current = (array) get_post_meta( (int) $coupon_id, self::COUPON_META, true );
-		$hash    = null === $body ? '' : md5( (string) wp_json_encode( $body ) );
-		if ( ( $current['hash'] ?? '' ) === $hash ) {
-			return;
+		$limit   = (int) $coupon->get_usage_limit();
+		$only    = array_map( 'intval', (array) $coupon->get_product_ids() );
+		if ( ( $expires && $expires->getTimestamp() <= time() )
+			|| ( $limit > 0 && (int) $coupon->get_usage_count() >= $limit )
+			|| ( $only && ! in_array( $product_id, $only, true ) )
+			|| in_array( $product_id, array_map( 'intval', (array) $coupon->get_excluded_product_ids() ), true )
+			|| ! in_array( $coupon->get_discount_type(), array( 'percent', 'fixed_cart', 'fixed_product' ), true ) ) {
+			return null;
 		}
-		if ( ! empty( $current['id'] ) ) {
-			self::request( 'PATCH', '/discount/' . rawurlencode( (string) $current['id'] ) . '/', array( 'isActive' => false ) );
-		}
-		if ( null === $body ) {
-			delete_post_meta( (int) $coupon_id, self::COUPON_META );
-			return;
-		}
-		$result = self::request( 'POST', '/discount/', $body );
-		if ( is_wp_error( $result ) || 201 !== $result['status'] || empty( $result['body']['id'] ) ) {
-			delete_post_meta( (int) $coupon_id, self::COUPON_META );
-			Events::error( 'kelviq.discount', sprintf( 'Coupon %s could not be created in Kelviq.', $coupon->get_code() ), array( 'status' => is_wp_error( $result ) ? 0 : $result['status'] ) );
-			return;
-		}
-		update_post_meta(
-			(int) $coupon_id,
-			self::COUPON_META,
-			array(
-				'id'   => (string) $result['body']['id'],
-				'hash' => $hash,
-			)
-		);
-	}
-
-	/**
-	 * Kelviq discount code for a WooCommerce coupon that is synced and active ('' otherwise).
-	 *
-	 * @param string $code Coupon code typed by the customer.
-	 * @return string
-	 */
-	public static function coupon_discount_code( $code ) {
-		$id = function_exists( 'wc_get_coupon_id_by_code' ) ? (int) wc_get_coupon_id_by_code( (string) $code ) : 0;
-		return $id && ! empty( get_post_meta( $id, self::COUPON_META, true )['id'] ) ? self::discount_code( $code ) : '';
+		return $coupon;
 	}
 
 	// ---------------------------------------------------------------- webhooks
@@ -503,7 +438,7 @@ class Kelviq {
 		$user     = (int) ( $meta['wpes_user'] ?? 0 );
 		$plan     = (string) ( $meta['wpes_plan'] ?? '' );
 		$customer = (string) ( $item['customer_id'] ?? $item['customerId'] ?? $item['customer']['customer_id'] ?? '' );
-		if ( $user <= 0 || null === self::plan_for( $plan ) || ( '' !== $customer && (string) $user !== $customer ) ) {
+		if ( $user <= 0 || '' === $plan || ( '' !== $customer && (string) $user !== $customer ) ) {
 			return null;
 		}
 		$license = (int) ( $meta['wpes_license'] ?? 0 );
@@ -536,6 +471,10 @@ class Kelviq {
 			}
 		}
 		Fulfilment::apply( $intent['user'], $plan, $intent['renew'], $intent['upgrade'], 0, $ref );
+		$code = (string) ( $item['metadata']['wpes_coupon'] ?? '' );
+		if ( '' !== $code && class_exists( 'WC_Coupon' ) ) {
+			( new \WC_Coupon( $code ) )->increase_usage_count( '', null );
+		}
 	}
 
 	/**
