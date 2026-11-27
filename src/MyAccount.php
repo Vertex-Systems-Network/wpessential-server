@@ -72,7 +72,7 @@ class MyAccount {
 	 */
 	public static function assets() {
 		if ( is_account_page() ) {
-			wp_enqueue_style( 'wpes-account', plugins_url( 'assets/account.css', WPES_SERVER_FILE ), array(), WPES_SERVER_VERSION );
+			wp_enqueue_style( 'wpes-account', plugins_url( 'assets/account.css', WPES_SERVER_FILE ), array(), WPES_SERVER_VERSION . '.' . (int) filemtime( WPES_SERVER_DIR . '/assets/account.css' ) );
 		}
 	}
 
