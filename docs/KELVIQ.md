@@ -11,22 +11,33 @@
 
 ## Configuration
 
-Put these in `wp-config.php` constants or in the server environment. They are never stored in the database.
+Go to Settings → Payments → Kelviq. It has the same layout as Lemon Squeezy:
+- Enable
+- Live (production)
+- Prices include tax
+- Plan identifier
+- Server API key and webhook signing secret. Once saved, these are never shown again.
 
-| Name | Value |
-|---|---|
-| `KELVIQ_SERVER_API_KEY` | Server key, from the Kelviq setup page in live mode |
-| `KELVIQ_ENV` | `production` (when unset, the code uses sandbox) |
-| `KELVIQ_WEBHOOK_SECRET` | Endpoint signing secret, `kq_whsec_…` |
-| `KELVIQ_SUCCESS_URL` | Optional absolute return URL. The default is the My Account page plus `?wpes_checkout=done`. |
+The `wp-config.php` constants `KELVIQ_SERVER_API_KEY`, `KELVIQ_WEBHOOK_SECRET` and `KELVIQ_ENV` override the fields. `KELVIQ_SUCCESS_URL` is optional.
 
 To check the keys without printing them, put them in a project `.env.local` and run:
 
     npx -y @kelviq/cli env --check
 
-## What is sold
+## What is sold: everything is managed in WooCommerce
 
-The Kelviq plans `starter`, `pro` and `agency` are offered for `monthly → MONTHLY`, `yearly → YEARLY` and `lifetime → ONE_TIME`. `starter` is included.
+Plans, prices and coupons are managed only in WooCommerce. Kelviq has one product (`wpessential`) and one shared one-time plan, `wpessential-order`. The plan identifier is set under Settings → Kelviq.
+
+Each checkout sends:
+- the plan's USD price (the product's `_wpes_usd_price`, otherwise its price), after any WooCommerce coupon, as `customAmount`
+- `currencyCode` USD
+- `chargePeriod` ONE_TIME
+
+A coupon passes the same checks as in a cart: it must be published, not expired, have uses left and allow the product. Its use is counted once the payment is confirmed.
+
+Renewals work like the WooCommerce flow: each renewal is a new payment. Kelviq does not run any subscriptions.
+
+Unconfirmed by the docs: whether `customAmount` is in major units and whether it is accepted with `ONE_TIME`. Test both in sandbox first.
 
 The `customerId` is the WordPress user ID, and it is always read on the server.
 
@@ -61,27 +72,11 @@ The `customerId` is the WordPress user ID, and it is always read on the server.
 
 ## Catalog (pricing as code)
 
-The catalog is `tools/kelviq/kelviq.config.ts`:
-- One product, `wpessential-pro`.
-- Four BOOLEAN features: `all-themes`, `early-access`, `priority-support` and `white-label`.
-- Three plans, `starter`, `pro` and `agency`, in USD. Each has a monthly price, a yearly price (20% off) and a ONE_TIME (lifetime) price, matching `src/Plans.php`.
-
-Run these from `tools/kelviq/`. Put the keys in `tools/kelviq/.env.local`, which is git-ignored.
+`tools/kelviq/kelviq.config.ts` holds the one product and the one plan. Push it once, from `tools/kelviq/`, with the keys in `.env.local`:
 
     npm install
     npx kelviq env --check
-    npx kelviq push --prod --dry-run          # show the diff, then wait for approval
-    npx kelviq push --prod --yes --publish    # makes the plans visible to customers
-    npx kelviq status --prod
+    npx kelviq push --prod --dry-run
+    npx kelviq push --prod --yes --publish
 
-## Trial and discounts are linked to WooCommerce
-
-- **Trial:** the 30-day Pro trial (`Trials`) stays ours. Kelviq plans have no trial.
-- **Discounts:** each WooCommerce coupon is mirrored as a Kelviq discount by `Kelviq::sync_coupon` when it is created, updated, trashed or deleted.
-  - Kelviq codes are uppercase letters and digits, so `launch-20` becomes `LAUNCH20`.
-  - The discount type is percent, fixed cart or fixed product.
-  - Expiry and usage limit carry over.
-  - The duration is ONCE.
-  - Kelviq discounts can only be switched on or off, so editing a coupon switches the old discount off and creates a new one.
-- The `coupon` parameter on `POST /account/checkout` with `channel=kelviq` pre-applies the coupon as `discountCode`. A coupon that has not been synced is refused.
-- Syncing only runs when Kelviq is configured. Every coupon saved after that creates a live discount.
+After that, price and plan changes are made in WooCommerce only.

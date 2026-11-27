@@ -355,7 +355,14 @@ class Admin {
 				'auto_renew'  => 0,
 				'white_label' => 1,
 			);
-			Events::log( 'license.owner_issued', 'Owner licence issued.', array( 'user_id' => (int) $user->ID, 'by' => get_current_user_id() ) );
+			Events::log(
+				'license.owner_issued',
+				'Owner licence issued.',
+				array(
+					'user_id' => (int) $user->ID,
+					'by'      => get_current_user_id(),
+				)
+			);
 		}
 		$count = isset( $_POST['count'] ) ? min( 50, max( 1, (int) $_POST['count'] ) ) : 1;
 		$last  = 0;
@@ -401,6 +408,13 @@ class Admin {
 		echo '<p><label>' . esc_html__( 'Webhook signing secret', 'wpessential-server' ) . ' <input type="password" name="ls_secret" value="" autocomplete="new-password" class="regular-text" placeholder="' . esc_attr( '' !== $ls['secret'] ? __( 'Saved. Type a new one to replace it.', 'wpessential-server' ) : '' ) . '"></label></p>';
 		echo '<p class="description">' . esc_html__( 'Webhook URL (events: order_created, order_refunded, subscription_created, subscription_updated, subscription_payment_success, subscription_cancelled, subscription_resumed, subscription_expired):', 'wpessential-server' ) . ' <code>' . esc_html( rest_url( Api::NS . '/lemonsqueezy' ) ) . '</code></p>';
 		echo '<p class="description">' . esc_html__( 'Put each plan\'s Lemon Squeezy variant ID on its WooCommerce product. Status:', 'wpessential-server' ) . ' <strong>' . esc_html( LemonSqueezy::enabled() ? __( 'ready', 'wpessential-server' ) : __( 'off or incomplete', 'wpessential-server' ) ) . '</strong></p></td></tr>';
+		$kq = Kelviq::secrets();
+		echo '<tr><th>' . esc_html__( 'Kelviq (USD, card, Apple Pay, Google Pay, PayPal)', 'wpessential-server' ) . '</th><td><label><input type="checkbox" name="kq_enabled" value="1"' . checked( $s['kq_enabled'], 1, false ) . '> ' . esc_html__( 'Offer Kelviq checkout', 'wpessential-server' ) . '</label> <label style="margin-left:1em"><input type="checkbox" name="kq_live" value="1"' . checked( $s['kq_live'], 1, false ) . '> ' . esc_html__( 'Live (production)', 'wpessential-server' ) . '</label> <label style="margin-left:1em"><input type="checkbox" name="kq_tax_inclusive" value="1"' . checked( $s['kq_tax_inclusive'], 1, false ) . '> ' . esc_html__( 'Prices include tax', 'wpessential-server' ) . '</label>';
+		echo '<p><label>' . esc_html__( 'Kelviq plan identifier (one one-time plan for every order)', 'wpessential-server' ) . ' <input type="text" name="kq_plan" value="' . esc_attr( (string) $s['kq_plan'] ) . '" class="regular-text"></label></p>';
+		echo '<p><label>' . esc_html__( 'Server API key', 'wpessential-server' ) . ' <input type="password" name="kq_api_key" value="" autocomplete="new-password" class="regular-text" placeholder="' . esc_attr( '' !== $kq['api_key'] ? __( 'Saved. Type a new one to replace it.', 'wpessential-server' ) : '' ) . '"></label></p>';
+		echo '<p><label>' . esc_html__( 'Webhook signing secret', 'wpessential-server' ) . ' <input type="password" name="kq_secret" value="" autocomplete="new-password" class="regular-text" placeholder="' . esc_attr( '' !== $kq['secret'] ? __( 'Saved. Type a new one to replace it.', 'wpessential-server' ) : '' ) . '"></label></p>';
+		echo '<p class="description">' . esc_html__( 'Plans, prices (each plan\'s USD price) and coupons stay in WooCommerce; nothing needs changing in Kelviq. Webhook URL (events: checkout.completed, invoice.payment_failed, subscription.created, subscription.updated, subscription.plan_changed, subscription.cancelled):', 'wpessential-server' ) . ' <code>' . esc_html( rest_url( Api::NS . '/kelviq/webhooks' ) ) . '</code></p>';
+		echo '<p class="description">' . esc_html__( 'wp-config.php constants KELVIQ_SERVER_API_KEY, KELVIQ_WEBHOOK_SECRET and KELVIQ_ENV override these fields. Status:', 'wpessential-server' ) . ' <strong>' . esc_html( Kelviq::enabled() ? __( 'ready', 'wpessential-server' ) : __( 'off or incomplete', 'wpessential-server' ) ) . '</strong></p></td></tr>';
 		echo '<tr><th>' . esc_html__( 'Theme endpoint', 'wpessential-server' ) . '</th><td><code>' . esc_html( rest_url( Api::NS . '/license' ) ) . '</code><p class="description">' . esc_html__( 'Use this as the license endpoint and the demos manifest URL below in the theme.', 'wpessential-server' ) . '</p><code>' . esc_html( rest_url( Api::NS . '/demos' ) ) . '</code></td></tr>';
 		echo '</table>';
 		submit_button();
@@ -645,6 +659,21 @@ class Admin {
 			}
 		}
 		update_option( LemonSqueezy::SECRETS, $secrets, false );
+		$out['kq_enabled']       = empty( $_POST['kq_enabled'] ) ? 0 : 1;
+		$out['kq_live']          = empty( $_POST['kq_live'] ) ? 0 : 1;
+		$out['kq_tax_inclusive'] = empty( $_POST['kq_tax_inclusive'] ) ? 0 : 1;
+		$out['kq_plan']          = isset( $_POST['kq_plan'] ) ? sanitize_title( wp_unslash( $_POST['kq_plan'] ) ) : 'wpessential-order';
+		$kq_secrets              = Kelviq::secrets();
+		foreach ( array(
+			'kq_api_key' => 'api_key',
+			'kq_secret'  => 'secret',
+		) as $field => $key ) {
+			$value = isset( $_POST[ $field ] ) ? trim( sanitize_text_field( wp_unslash( $_POST[ $field ] ) ) ) : '';
+			if ( '' !== $value ) {
+				$kq_secrets[ $key ] = $value;
+			}
+		}
+		update_option( Kelviq::SECRETS, $kq_secrets, false );
 		if ( ! empty( $_FILES['wpes_theme_zip']['tmp_name'] ) && '.zip' === strtolower( substr( sanitize_file_name( wp_unslash( $_FILES['wpes_theme_zip']['name'] ?? '' ) ), -4 ) ) ) {
 			move_uploaded_file( $_FILES['wpes_theme_zip']['tmp_name'], Playground::theme_path() ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized,Generic.PHP.ForbiddenFunctions.Found -- Uploaded zip moved to the private folder.
 		}

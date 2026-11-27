@@ -47,7 +47,6 @@ final class Plugin {
 		Accounts::hooks();
 		MyAccount::hooks();
 		Quotes::hooks();
-		Kelviq::hooks();
 		add_action( 'rest_api_init', array( new Api(), 'routes' ) );
 		if ( is_admin() ) {
 			Admin::hooks();
@@ -64,20 +63,24 @@ final class Plugin {
 		$settings = wp_parse_args(
 			(array) get_option( 'wpes_server_settings', array() ),
 			array(
-				'grace_days'      => 7,
-				'remind_days'     => 7,
-				'free_staging'    => 1,
-				'token_days'      => 30,
-				'download_mins'   => 15,
-				'playground'      => 1,
-				'event_days'      => 365,
+				'grace_days'       => 7,
+				'remind_days'      => 7,
+				'free_staging'     => 1,
+				'token_days'       => 30,
+				'download_mins'    => 15,
+				'playground'       => 1,
+				'event_days'       => 365,
 				// Payments: each channel can be switched off without touching the others.
-				'ls_enabled'      => 0,
-				'ls_test'         => 0,
-				'ls_store_id'     => '',
-				'bank_grace'      => 1,
-				'bank_grace_days' => 5,
-				'receipts'        => 1,
+				'ls_enabled'       => 0,
+				'ls_test'          => 0,
+				'kq_enabled'       => 0,
+				'kq_live'          => 0,
+				'kq_plan'          => 'wpessential-order',
+				'kq_tax_inclusive' => 1,
+				'ls_store_id'      => '',
+				'bank_grace'       => 1,
+				'bank_grace_days'  => 5,
+				'receipts'         => 1,
 			)
 		);
 		return null === $key ? $settings : ( $settings[ $key ] ?? null );
