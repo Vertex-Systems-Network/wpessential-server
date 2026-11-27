@@ -42,6 +42,8 @@ class Api {
 			'/account/connect'    => array( 'POST', 'connect', $auth ),
 			'/account/trial'      => array( 'POST', 'trial', $auth ),
 			'/lemonsqueezy'       => array( 'POST', 'lemonsqueezy', $public ),
+			'/kelviq/webhooks'    => array( 'POST', 'kelviq', $public ),
+			'/account/billing'    => array( 'POST', 'billing_portal', $auth ),
 			'/release'            => array( 'POST', 'release', array( $this, 'can_release' ) ),
 		);
 		foreach ( $routes as $route => $def ) {
@@ -457,14 +459,44 @@ class Api {
 	}
 
 	/**
+	 * Kelviq webhooks (signature-checked inside).
+	 *
+	 * @param \WP_REST_Request $request Request.
+	 * @return \WP_REST_Response
+	 */
+	public function kelviq( $request ) {
+		return Kelviq::webhook( $request );
+	}
+
+	/**
+	 * Kelviq billing portal link for the signed-in user.
+	 *
+	 * @param \WP_REST_Request $request Request.
+	 * @return \WP_REST_Response
+	 */
+	public function billing_portal( $request ) {
+		$url = Kelviq::portal_url( (int) $request->get_param( '_user' ) );
+		if ( is_wp_error( $url ) ) {
+			return $this->fail( $url, 'kelviq_no_customer' === $url->get_error_code() ? 404 : 400 );
+		}
+		return rest_ensure_response(
+			array(
+				'success' => true,
+				'url'     => $url,
+			)
+		);
+	}
+
+	/**
 	 * Payment channels the account can choose from.
 	 *
-	 * @return array{local:bool,international:bool}
+	 * @return array{local:bool,international:bool,kelviq:bool}
 	 */
 	public static function channels() {
 		return array(
 			'local'         => true,
 			'international' => LemonSqueezy::enabled(),
+			'kelviq'        => Kelviq::enabled(),
 		);
 	}
 
@@ -492,6 +524,19 @@ class Api {
 				return $this->fail( new \WP_Error( 'owner', __( 'This license is not in your account.', 'wpessential-server' ) ), 403 );
 			}
 			$extra[ 'renew' === $mode ? 'wpes_renew' : 'wpes_upgrade' ] = $license;
+		}
+		// Kelviq: card checkout for the plans published there (pro, agency).
+		if ( 'kelviq' === (string) $request->get_param( 'channel' ) ) {
+			$url = Kelviq::checkout_url( $user, $key, $license, $mode );
+			if ( is_wp_error( $url ) ) {
+				return $this->fail( $url, 400 );
+			}
+			return rest_ensure_response(
+				array(
+					'success' => true,
+					'url'     => $url,
+				)
+			);
 		}
 		// International customers pay by card or PayPal on Lemon Squeezy (USD); everyone else
 		// uses the WooCommerce checkout (JazzCash, EasyPaisa, Bank Alfalah, bank transfer, PKR).
